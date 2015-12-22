@@ -21,8 +21,26 @@ angular.module('ui.tinymce', [])
         var ngModel = ctrls[0],
           form = ctrls[1] || null;
 
-        var expression, options = {}, tinyInstance,
-          updateView = function(editor) {
+        function debounce(func, wait, immediate) {
+          var timeout;
+          return function() {
+            var context = this,
+              args = arguments;
+            var callNow = immediate && !timeout;
+            clearTimeout(timeout);
+            timeout = setTimeout(function() {
+              timeout = null;
+              if (!immediate) {
+               func.apply(context, args);
+              }
+            }, wait);
+            if (callNow) func.apply(context, args);
+           };
+        };
+
+        var update = function(editor) {
+          if (tinyInstance) {
+            editor.save();
             var content = editor.getContent({format: options.format}).trim();
             content = $sce.trustAsHtml(content);
 
@@ -30,7 +48,18 @@ angular.module('ui.tinymce', [])
             if (!$rootScope.$$phase) {
               scope.$digest();
             }
-          };
+          }
+        }
+
+        var expression, options = {}, tinyInstance,
+          updateView = update;
+
+        // If ng-model debounce is set, remove it and set internal debounce instead
+        if (ngModel.$options && ngModel.$options.debounce) {
+          var delay = ngModel.$options.debounce;
+          updateView = debounce(update, delay);
+          ngModel.$$setOptions(angular.extend(ngModel.$options, {debounce: 0}));
+        }
 
         function toggleDisable(disabled) {
           if (disabled) {
@@ -69,13 +98,11 @@ angular.module('ui.tinymce', [])
 
             // Update model on button click
             ed.on('ExecCommand', function() {
-              ed.save();
               updateView(ed);
             });
 
             // Update model on change
             ed.on('change NodeChange', function() {
-              ed.save();
               updateView(ed);
             });
 
@@ -85,7 +112,6 @@ angular.module('ui.tinymce', [])
 
             // Update model when an object has been resized (table, image)
             ed.on('ObjectResized', function() {
-              ed.save();
               updateView(ed);
             });
 
@@ -161,6 +187,7 @@ angular.module('ui.tinymce', [])
           ensureInstance();
 
           if (tinyInstance) {
+            update(tinyInstance);
             tinyInstance.remove();
             tinyInstance = null;
           }
